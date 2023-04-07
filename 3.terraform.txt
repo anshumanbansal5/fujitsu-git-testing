@@ -1,0 +1,1128 @@
+In Lab:
+
+Install Azure CLI
+--------------------
+#sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+
+#echo -e "[azure-cli]
+name=Azure CLI
+baseurl=https://packages.microsoft.com/yumrepos/azure-cli
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc" | sudo tee /etc/yum.repos.d/azure-cli.repo
+
+#sudo yum install azure-cli -y
+
+Install VSCODE
+-------------------
+    
+echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo
+
+Open Folder in VS Code:
+#mkdir ~/Desktop/terraform_demos 
+
+Go to applications -> programming -> visual studio -> file menu -> open folder -> browse your terraform_demos folder.
+
+Add extension for terraform -> left side click on application icon -> then search 'terraform' -> find 'terraform azure autocomplete' by Sisir Sagar -> install
+
+yum install code -y
+
+Install Terraform
+-------------------
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+yum install terraform -y
+
+
+
+
+
+
+										--------OR--------------OR--------
+
+Install Terraform
+========================
+Step 1: Go to https://www.terraform.io/downloads.html -> download windows 64 bit -> then extract
+Step 2: create folder with named terraform in c drive then copy extracted file to c:\terraform
+Step 3: Go to environment variables -> environment variables -> path -> edit -> new -> then type C:\terraform
+Step 4: verify installation : #terraform version
+
+Install Azure CLI
+============================
+Go to https://docs.microsoft.com/en-us/cli/azure/install-azure-cli-windows?tabs=azure-cli -> download latest release then install
+
+to verify #az
+
+Install visual studio
+======================
+https://code.visualstudio.com/download -> download then install
+
+Create folder on desktop with named terraform_demos 
+
+Open visual studio -> file menu -> open folder -> browse your terraform_demos folder.
+
+Add extension for terraform -> left side click on application icon -> then search 'terraform' -> find 'terraform azure autocomplete' by Sisir Sagar -> install
+
+To increase font size:
+ctrl +shift + p -> click preferences settings.json -> paste below content
+
+{
+    "workbench.colorTheme": "Default Light+",
+    "editor.fontSize": 25,
+    "terminal.integrated.fontSize": 22,
+    "terminal.integrated.defaultProfile.windows": "Git Bash"
+}
+
+To authenticate with azure
+===============================
+Method 1: Azure CLI method
+
+To check azure active directory: portal.azure.com -> azure active directory -> Copy tenant ID
+
+#az login --tenant <TENANTID>
+
+
+Create first terraform file:
+
+#vim first.tf
+provider "azurerm" {
+    features {}
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "gaurav"
+  location = "East US"
+}
+
+
+Method 2: Authenticate using service principal
+
+Doc: https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/guides/service_principal_client_secret
+
+To create service principal:
+go to azure shell (shell.azure.com) then type below command:
+#az ad sp create-for-rbac --role="Contributor" --scopes="/subscriptions/SUBSCRIPTION_ID"
+
+It will give some output 
+
+#vim first.tf
+provider "azurerm" {
+  features {}
+
+  subscription_id = "PASTE YOUR SUBSCRIPTION ID"
+  client_id       = "PASTE APP ID FROM PREVIOUS STEP"
+  client_secret   = "PASTE PASSWORD FROM PREVIOUS STEP"
+  tenant_id       = "PASTE TENANT ID FROM PREVIOUS STEP"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "gaurav"
+  location = "East US"
+}
+
+ctrl + ` = to open terminal
+
+#terraform init -> to download provider
+#terraform plan -> dry run 
+#terraform apply -> to build infra but it will ask for permission
+#terraform apply --auto-approve -> to build infra without permission
+
+to destroy: #terraform destroy
+
+to destroy specific resources: #terraform destroy -target azurerm_resource_group.localname
+
+#terraform init -> to download provider
+#terraform plan -> dry run 
+#terraform apply -> to build infra but it will ask for permission
+
+Demo - Create Windows VM
+============================
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976dxxxxxxxxxxxxxxxd729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1xxxxxxx27e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6xxxxxxxxPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ffxxxxxxxxxxba99ae326d"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "example-resources"
+  location = "West US"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = "example-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "mysubnet" {
+  name                 = "internal"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "acceptanceTestPublicIp1"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+}
+
+resource "azurerm_network_interface" "mynic" {
+  name                = "example-nic"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                 = azurerm_subnet.mysubnet.id
+    private_ip_address_allocation     = "Dynamic"
+    public_ip_address_id    = azurerm_public_ip.example.id
+  }
+}
+
+resource "azurerm_windows_virtual_machine" "example" {
+  name                = "example-machine"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  size                = "Standard_F2"
+  admin_username      = "adminuser"
+  admin_password      = "P@$$w0rd1234!"
+  network_interface_ids = [
+    azurerm_network_interface.mynic.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2016-Datacenter"
+    version   = "latest"
+  }
+}
+
+#terraform init 
+#terraform fmt
+#terraform validate
+#terraform plan 
+#terraform apply 
+
+
+Exercise:
+- Create a linux vm with the named vm1 and give username as hello and password as Pa$$w0rd123 and add public ip to this vm nic in eastus.
+
+Linux VM
+=========
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976asdfasdf-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-42543b465827e7402"
+  client_secret   = ".ao8Q~o61tao0thnHxxxewdsfgsxPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-aasdfert9aeasdf26d"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "example-resources"
+  location = "eastus"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = "example-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "example" {
+  name                 = "internal"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "acceptanceTestPublicIp1"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+}
+
+resource "azurerm_network_interface" "example" {
+  name                = "example-nic"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.example.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.example.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "example" {
+  name                = "vm1"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  size                = "Standard_F2"
+  admin_username      = "hello"
+  admin_password = "Pa$$w0rd12"
+  disable_password_authentication = false
+  network_interface_ids = [
+    azurerm_network_interface.example.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "16.04-LTS"
+    version   = "latest"
+  }
+}
+
+
+Demo - Attributes & Output
+================================
+
+Output 
+=======
+We want to extract public ip from result.
+
+resource "azurerm_resource_group" "rg" {
+  name = "rg1"
+  location = "West Europe"
+}
+
+resource "azurerm_public_ip" "pip" {
+  name = "pip1"
+  resource_group_name = "rg1"
+  location = "West Europe"
+  allocation_method = "Static"  ##for dynamic output will not come because in dynamic public ip 
+}								## will assign when any vm will create or loadbalancer
+
+output "publicip" {
+  value = azurerm_public_ip.pip.ip_address
+}
+
+
+#terraform plan 
+#terraform apply 
+ONCE OUR PUBLIC IP WILL BE CREATED WE WILL SEE OUTPUT 
+
+#terraform output publicip -> to show output stored in state file
+
+
+HOW WE CAN SEE WHICH ATTRIBUTES ARE ALLOWED WE CAN SEE THE DOCUMENTATION
+
+If we want all the outputs
+===========================
+
+provider "azurerm" {
+ features {}
+}
+
+resource "azurerm_resource_group" "rg" {
+  name = "rg1"
+  location = "West Europe"
+}
+
+resource "azurerm_public_ip" "pip" {
+  name = "pip1"
+  resource_group_name = "rg1"
+  location = "West Europe"
+  allocation_method = "Static"  ##for dynamic output will not come because in dynamic public ip 
+}								## will assign when any vm will create or loadbalancer
+
+output "publicip" {
+  value = azurerm_public_ip.pip		##we have removed attributes now we will see all outputs
+}
+
+
+Demo - Variables
+======================
+#vim var.tf
+variable "rg" {
+    default = "gauravrg"
+}
+
+variable "location" {
+    default = "East US"
+}
+
+#vim main.tf
+provider "azurerm" {
+  features {}
+
+  subscription_id = "5asxxxxxxxxxxxxxx"
+  client_id       = "2539c8aa-6fb8-4b55-85a4-1b173ede4cdf"
+  client_secret   = "GzsTSxxxxxxxxxxxxVjL59yNLKPtB"
+  tenant_id       = "56dbb375ssc7-9f5d-8fa9e88b4f42"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = var.rg
+  location = var.location
+}
+
+#terraform init
+#terraform plan
+#terraform apply
+
+Demo - multiple ways to define variable 
+========================================
+
+1) Change variable at the command level:
+
+create file with named variables.tf 
+variable "rg" {
+  default = "rg1"
+}
+variable "region" {
+  default = "West Europe"
+}
+
+create resource file
+provider "azurerm" {
+ features {}
+}
+
+resource "azurerm_resource_group" "rg" {
+  name = var.rg
+  location = var.region
+}
+
+#terraform plan -var="region=CentralUS" -out myplan
+#terraform apply myplan
+
+2) If we will not define variable just key.
+
+create file with named variables.tf 
+variable "rg" {}
+
+variable "region" {}
+
+create resource file
+provider "azurerm" {
+ features {}
+}
+
+resource "azurerm_resource_group" "rg" {
+  name = var.rg
+  location = var.region
+}
+
+#terraform plan -out myplan2
+THEN IT WILL ASK FOR VALUES
+#terraform apply myplan2
+
+3) Best Practice is to create one terraform.tfvars file and here we can define variable, now if user wants to change the values of variables so he/she can change without editing main var files, if user will not define then default value will be used.
+
+#vim var.tf
+variable "rgname" {
+    default = "gauravrg"
+}
+
+variable "region" {
+    default = "eastus"
+}
+
+#vim main.tf
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = var.rgname
+  location = var.region
+}
+
+#vim terraform.tfvars
+rgname="developer-rg"
+region="westus"
+
+WHEN WE WILL RUN terraform plan THEN OUR DEFAULT VARIABLE WHICH IS DEFINED IN var.tf WILL BE REPLACED WITH terraform.tfvars FILE.
+
+NOTE:  Make sure we need to give terraform.tfvars file only otherwise it will not work but if you have file with name anyname.tfvars then we need to explicitly define at the time of cli terraform plan:
+#terraform plan -var-file="filename.tfvars"
+
+4) Environment Variable: GLOBAL VARIABLE
+Remove contents from tfvars file
+
+In Windows:
+#setx TF_VAR_region CentralUS
+#echo %TF_VAR_region% -> to see values
+
+In Linux:
+#export TF_VAR_region CentralUS
+
+open new cmd then run #terraform plan (it will replace with environment variable)
+
+Priority:
+4) variable file 
+3) tfvars
+2) environment variable
+1) command line 
+
+Demo - Data Type 
+==================
+Resource group variable will only accept number not string.
+
+#vim var.tf
+variable "rg" {
+	type = number 
+	}
+
+variable "region" {
+	default = "West Europe"
+	}
+
+#vim rg.tf
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+resource "azurerm_resource_group" "rg" {
+  name = var.rg
+  location = var.region
+}
+
+#terraform plan 
+IT WILL ONLY ACCEPT NUMBER NOT STRING
+
+Demo - Map Data Type Variable
+===============================
+#vim variables.tf 
+variable rg {
+  type = map(string)
+  default = {
+    group = "rg2",
+    region = "West US"
+  }
+}
+
+#vim filename.tf 
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+resource "azurerm_resource_group" "rg" {
+  name = var.rg.group
+  location = var.rg.region
+}
+
+#terraform plan 
+
+Demo - List Data Type Variable 
+=================================
+#vim variables.tf 
+variable rg {
+  type = list
+  default = ["rg2","West US"]
+  }
+
+#vim filename.tf 
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+
+resource "azurerm_resource_group" "rg" {
+  name = var.rg[0]
+  location = var.rg[1]
+}
+
+#terraform plan 
+
+Looping
+=================================================================================
+
+Example 1 - Use Count
+---------------------------
+Create 10 Public IPs
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "myrg3"
+  location = "West Europe"
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "myip${count.index}"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+  count = 10
+}
+
+IT WILL CREATE myip0 to myip9
+
+Example 2: Count Index with Custom Names
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+variable "pip" {
+  type = list
+  default = ["dev-pip","test-pip","prod-pip"]
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "myrg4"
+  location = "East US"
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = var.pip[count.index]
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+  count = 3
+}
+
+With above code, it will create dev-pip, test-pip and prod-pip public ip.
+
+For_each
+=======================================
+Example 1 - For Each Loop with Map Data Type
+-----------------------------------------------------
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+variable "groups" {
+  type = map
+  default = {
+    dev = "eastus"
+    prod = "centralus"
+  }
+}
+
+resource "azurerm_resource_group" "rg" {
+  for_each = var.groups
+  name     = each.key
+  location = each.value
+}
+
+
+Note: For_each only supports map data type or set of strings so if you have list data type then we will have to convert it into set of strings using toset function.
+
+Example 2 - For Each Loop with List Data Type
+-----------------------------------------------------
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "85397asdfasdf6da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582qwerxxx7e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6werqwerHl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-casdfxzccba99ae326d"
+}
+
+variable "groups" {
+  type = list
+  default = ["dev","prod"]
+}
+
+resource "azurerm_resource_group" "rg" {
+  for_each = toset(var.groups)
+  name     = each.value
+  location = "East US"
+}
+
+
+Conditional Expression
+============================
+Scenario: When we will run terraform plan then it will ask input if user will type "dev" then create in eastus otherwise westus
+
+Example 1:
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976da-1943-482f-beasdf67-2d729asrec61ef50"
+  client_id       = "c3f86a4asdf9-c383-4f48-b1af-b465827e7402"
+  client_secret   = ".ao8Q~o61tao0twerhnH6Hl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ffxcvert453453-ad6c-ccba99ae326d"
+}
+
+variable "department" {
+    description = "please type your deparment"
+}
+
+resource "azurerm_resource_group" "example1" {
+  name     = "hellorg"
+  location = var.department == "dev" ? "eastus" : "westus"
+}
+#terraform plan
+IF USER WILL TYPE DEV THEN eastus OTHERWISE westus
+
+
+Demo - Terraform Function 
+============================
+Just to verify
+-------------------
+#terraform console 
+> max (10,20,30)
+30
+> min(10,20,30)
+10
+
+Function:
+1) Lookup
+2) Element
+3) Zipmap
+
+
+Example 1: Lookup Function - Filter key from map
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976da-1943-482f-beasdf67-2d729asrec61ef50"
+  client_id       = "c3f86a4asdf9-c383-4f48-b1af-b465827e7402"
+  client_secret   = ".ao8Q~o61tao0twerhnH6Hl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ffxcvert453453-ad6c-ccba99ae326d"
+}
+
+variable "location" {
+  type = map
+  default = {
+    "dev" = "East US"
+    "test" = "West US"
+    "prod" = "Central US"
+  }
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "myrg2"
+  location = lookup(var.location,"test","South India")  
+}
+
+With above code, in resource group location it will try to find test key from map if found then it will test value otherwise it will use South India.
+
+Example 2 - Element Function - Filter from list
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976da-1943-482f-beasdf67-2d729asrec61ef50"
+  client_id       = "c3f86a4asdf9-c383-4f48-b1af-b465827e7402"
+  client_secret   = ".ao8Q~o61tao0twerhnH6Hl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ffxcvert453453-ad6c-ccba99ae326d"
+}
+
+variable "rg" {
+  type = list 
+  default = ["rg1","rg2","rg3"]
+}
+
+variable "location" {
+  type = list
+  default = ["East US","West US","Central US"]
+
+resource "azurerm_resource_group" "example" {
+  name     = element(var.rg,0)
+  location = element(var.location,0)
+}
+
+Example 3 - Zipmap Function - To combine two values 
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976da-1943-482f-beasdf67-2d729asrec61ef50"
+  client_id       = "c3f86a4asdf9-c383-4f48-b1af-b465827e7402"
+  client_secret   = ".ao8Q~o61tao0twerhnH6Hl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ffxcvert453453-ad6c-ccba99ae326d"
+}
+resource "azurerm_resource_group" "example" {
+  name     = "piprg"
+  location = "West Europe"
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "myip${count.index}"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+  count = 3
+}
+
+output "name" {
+    value = zipmap(azurerm_public_ip.example[*].name,azurerm_public_ip.example[*].ip_address)
+}
+
+#terraform plan 
+#terraform apply 
+NOW WE WILL SEE BOTH OUTPUTS ARE COMBINED TOGETHER
+
+
+
+Demo - Remote-Exec Provisioner
+================================
+
+resource "azurerm_resource_group" "example" {
+  name     = "example-resources"
+  location = "East US"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = "example-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "example" {
+  name                 = "internal"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "acceptanceTestPublicIp1"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+}
+
+resource "azurerm_network_interface" "example" {
+  name                = "example-nic"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.example.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.example.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "example" {
+  name                = "example-machine"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  size                = "Standard_F2"
+  admin_username      = "adminuser"
+  admin_password = "Pa$$w0rd123"
+  disable_password_authentication = false
+  network_interface_ids = [
+    azurerm_network_interface.example.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "16.04-LTS"
+    version   = "latest"
+  }
+
+  provisioner "remote-exec" {
+      inline = [
+          "sudo apt-get update -y",
+          "sudo apt-get install nginx -y",
+          "sudo systemctl start nginx"
+      ]
+
+      connection {
+          type = "ssh"
+          user = self.admin_username
+          password = self.admin_password
+          host = self.public_ip_address
+      }
+  }
+}
+
+
+Demo - Local Exec 
+=====================
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976da-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b465827e7402"
+  client_secret   = ".ao8Q~o61tao0thnH6Hl2netZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-4ff3-ad6c-ccba99ae326d"
+}
+
+resource "azurerm_resource_group" "example" {
+  name     = "example-resources2"
+  location = "East US"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = "example-network"
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "example" {
+  name                 = "internal"
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_public_ip" "example" {
+  name                = "acceptanceTestPublicIp1"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  allocation_method   = "Static"
+}
+
+resource "azurerm_network_interface" "example" {
+  name                = "example-nic"
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.example.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id = azurerm_public_ip.example.id
+  }
+}
+
+resource "azurerm_linux_virtual_machine" "example" {
+  name                = "example-machine"
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  size                = "Standard_F2"
+  admin_username      = "adminuser"
+  admin_password = "Pa$$w0rd123"
+  disable_password_authentication = false
+  network_interface_ids = [
+    azurerm_network_interface.example.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "UbuntuServer"
+    sku       = "16.04-LTS"
+    version   = "latest"
+  }
+
+  provisioner "local-exec" {
+  command = "echo ${azurerm_public_ip.example.ip_address} >> myiplist.txt"
+  }
+
+}
+
+
+Demo - Terraform Modules
+===================================
+Create a folder with named modules: 
+	- Under modules create folder with named winvm with wintf files without using provider
+	- Under modules folder create folder with named call_module and create below file under this
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "853976dasdfa-1943-482f-be67-2d729c61ef50"
+  client_id       = "c3f86a49-c383-4f48-b1af-b46582xxcvxch7e7402"
+  client_secret   = ".ao8Q~o61tao0thnHzxcv6Hl2nertfetZaPHNCJ9ZZkEpaEC"
+  tenant_id       = "e8ac314e-8e13-sdfg4ff3-ad6c-ccba99asdfasefgjye326d"
+}
+
+module "fujitsuvm" {
+    source = "../winvm"
+}
+
+#terraform init 
+#terraform plan 
+#terraform apply 
+NOW WE DON'T NEED TO WRITE AGAIN AND AGAIN WE CAN REUSE
+
+Demo - Module Challange
+=============================
+ Step 1:Create a file with the named var.tf in modules/winvm folder with below content:
+variable "rg_name" {
+    default = "rg1"
+}
+
+variable "vnet_name" {
+    default = "vnet1"
+}
+
+variable "subnet_name" {
+    default = "subnet1"
+}
+
+variable "nic_name" {
+    default = "nic1"
+}
+
+variable "vm_name" {
+    default = "vm1"
+}
+
+
+Step 2: Go to our modules/winvm/main.tf file here use variable:
+
+resource "azurerm_resource_group" "example" {
+  name     = var.rg_name
+  location = "West Europe"
+}
+
+resource "azurerm_virtual_network" "example" {
+  name                = var.vnet_name
+  address_space       = ["10.0.0.0/16"]
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+}
+
+resource "azurerm_subnet" "example" {
+  name                 = var.subnet_name
+  resource_group_name  = azurerm_resource_group.example.name
+  virtual_network_name = azurerm_virtual_network.example.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
+
+resource "azurerm_network_interface" "example" {
+  name                = var.nic_name
+  location            = azurerm_resource_group.example.location
+  resource_group_name = azurerm_resource_group.example.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.example.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+resource "azurerm_windows_virtual_machine" "example" {
+  name                = var.vm_name
+  resource_group_name = azurerm_resource_group.example.name
+  location            = azurerm_resource_group.example.location
+  size                = "Standard_F2"
+  admin_username      = "adminuser"
+  admin_password      = "P@$$w0rd1234!"
+  network_interface_ids = [
+    azurerm_network_interface.example.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2016-Datacenter"
+    version   = "latest"
+  }
+}
+
+Step 3: Use variable in your module (modules/call_module/main.tf)
+
+NOTE: BECAUSE WE ARE USING VARIABLE IN OUR MODULE (WINVM) SO AT THE TIME OF CREATING BELOW FILE IF WE WILL NOT DEFINE VARIABLES THEN DEFAULT VARIABLE DEFINED IN WINVM FOLDER WILL BE USED BUT IF WE DEFINE VARIABLE THEN IT WILL USE NEW VALUE WHICH WE WILL DEFINE IN BELOW FILE.
+
+provider "azurerm" {
+  features {}
+
+  subscription_id = "5853c4a9-51cf-xxxxx8f5d-f3e01286aac6"
+  client_id       = "2539c8aa-qwe6fb8-xxxxxxxxxxxde4cdf"
+  client_secret   = "GzsTSW7Cs1v-.OuTnlGxxxx59yNLKPtB"
+  tenant_id       = "56dbb375-50xxxxx-9f5d-8fa9e88b4f42"
+}
+
+module "myvm" {
+  source = "../modules/winvm"
+  rg_name = "maheshrg"
+  vnet_name = "maheshvnet"
+  subnet_name = "maheshsubnet
+  nic_name = "maheshnic"
+  vm_name = "maheshvm"
+}
+
+#terraform plan
+
+
+Demo - Team Collaboration
+===============================
+Go to git and create a repository with named mycode.
+
+Go to modules folder in terminal.
+
+Initial Configuration:
+#git config --global user.name gaurav 
+#git config --global user.email gauravkumar9130@gmail.com
+
+#git init -> to  initialize
+#git add . -> to add files/folders in git
+#git commit -a -m "module created"
+
+to push:
+#git remote add fujitsu https://github.com/gauravkumar9130/mycode
+#git push fujitsu master
+
+
+
